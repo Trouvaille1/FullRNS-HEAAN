@@ -605,6 +605,7 @@ void Context::qiNTTAndEqual(uint64_t* a, long index) {
 			long j1 = i << logt1;//j1是当前层当前蝴蝶结构中，前半部分的起始坐标
 			long j2 = j1 + t - 1;//j2是当前层当前蝴蝶结构中，前半部分的最后一个坐标
 
+			//特别注意：这里的W是qRootPows放大beta=2^64倍后的结果（beta为word size，一般机器上beta=2^64）。即W=2^64*w=beta*qRootPows
 			uint64_t W = qRootScalePows[index][m + i];//当前层当前蝴蝶结构需要用到的psi幂次（注意：该幂次逆序存储，是为了消除bitreverse步骤）.这里将psi融合进NTT计算中（做负包卷积），详情见论文：https://link.springer.com/chapter/10.1007/978-3-319-22174-8_19
 //			uint64_t W = qRootScalePowsOverq[index][m + i];
 //			uint64_t w = qRootPows[index][m + i];
@@ -614,14 +615,14 @@ void Context::qiNTTAndEqual(uint64_t* a, long index) {
 				//DIT NTT的蝴蝶运算部分。每次处理a[j]和a[j+t]两个点。公式为：a[j]=(a[j]+a[j+t]*W) mod p，a[j+t]=(a[j]-a[j+t]*W) mod p
 				//使用了 Barrett Reduction。见：https://en.wikipedia.org/wiki/Barrett_reduction
 				//https://maskray.me/blog/2016-10-03-discrete-fourier-transform
-				uint64_t T = a[j + t];
-				unsigned __int128 U = static_cast<unsigned __int128>(T) * W;//U=T*W=a[j + t]*W(U为128位，防止溢出)。U是Harvey NTT butterfly中的W‘X1
-				uint64_t U0 = static_cast<uint64_t>(U);//从128位到64位的截断。U0为U的低64位
-				uint64_t U1 = static_cast<uint64_t>(U >> 64);//U缩小2^64倍.U1为U的高64位
-				uint64_t Q = U0 * qInv;//Q为低位乘以模逆元 W’
-				unsigned __int128 Hx = static_cast<unsigned __int128>(Q) * q;//Hx约等于Q*q=T*W=a[j + t]*W=U
-				uint64_t H = static_cast<uint64_t>(Hx >> 64);//Hx缩小2^64倍。H是Hx的高位部分
-				uint64_t V = U1 < H ? U1 + q - H : U1 - H;
+				uint64_t T = a[j + t];//T=X2
+				unsigned __int128 U = static_cast<unsigned __int128>(T) * W;//U=W*T=beta*w*T
+				uint64_t U0 = static_cast<uint64_t>(U);//U0=U mod beta
+				uint64_t U1 = static_cast<uint64_t>(U >> 64);//U1=U/beta
+				uint64_t Q = U0 * qInv;//Q=(U mod beta)/q 
+				unsigned __int128 Hx = static_cast<unsigned __int128>(Q) * q;//Hx=Q*q=[(U%beta)/q]*q
+				uint64_t H = static_cast<uint64_t>(Hx >> 64);//H=Hx/beta
+				uint64_t V = U1 < H ? U1 + q - H : U1 - H;//V=U1-H=(U-hx)/beta=(beta*w*T-Hx)/beta=w*T-q*[(U mod beta)/q]/beta=w*T-q*[(w*T mod beta)/q]。因为V本来就是64位的，所以不用再取模。所以V=w*T-q*[(w*T)/q]，此为barrett reduction公式
 				a[j + t] = a[j] < V ? a[j] + q - V: a[j] - V;
 				a[j] += V;
 				if(a[j] > q) a[j] -= q;
