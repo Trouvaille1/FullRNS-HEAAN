@@ -131,8 +131,8 @@ Plaintext Scheme::encode(double* v, long slots, long l) {
 }
 
 Plaintext Scheme::encode(complex<double>* v, long slots, long l) {
-	uint64_t* m = new uint64_t[l << context.logN]();
-	context.encode(m, v, slots, l);
+	uint64_t* m = new uint64_t[l << context.logN]();//m数组大小为l*N。因为这是在RNS下，每个大整数都被分解为l个小素数
+	context.encode(m, v, slots, l);//真正执行encode操作的函数
 	return Plaintext(m, context.N, slots, l);
 }
 
@@ -292,6 +292,7 @@ void Scheme::sub2AndEqual(Ciphertext& cipher1, Ciphertext& cipher2) {
 	context.sub2AndEqual(cipher1.bx, cipher2.bx, cipher1.l);
 }
 
+//同态乘法
 Ciphertext Scheme::mult(Ciphertext& cipher1, Ciphertext& cipher2) {
 	uint64_t* axbx1 = new uint64_t[cipher1.l << context.logN]();
 	uint64_t* axbx2 = new uint64_t[cipher1.l << context.logN]();

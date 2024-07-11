@@ -41,8 +41,10 @@ Context::Context(long logN, long logp, long L, long K, long h, double sigma) :
 	long cnt = 1;
 
 	bnd = 1;
+	//使用Q0_BIT_SIZE生成qVec中第0个质数。
 	while(1) {
 			uint64_t prime = (1ULL << Q0_BIT_SIZE) + bnd * M + 1;
+			//检测是否为质数
 			if(primeTest(prime)) {
 				qVec[0] = prime;
 				break;
@@ -51,6 +53,7 @@ Context::Context(long logN, long logp, long L, long K, long h, double sigma) :
 	}
 
 	bnd = 1;
+	//使用logp生成qVec中第1到L-1个质数。
 	while(cnt < L) {
 		uint64_t prime1 = (1ULL << logp) + bnd * M + 1;
 		if(primeTest(prime1)) {
@@ -72,10 +75,15 @@ Context::Context(long logN, long logp, long L, long K, long h, double sigma) :
 
 	for (long i = 0; i < L; ++i) {
 		qTwok[i] = (2 * ((long)log2(qVec[i]) + 1));
-		qrVec[i] = (static_cast<unsigned __int128>(1) << qTwok[i]) / qVec[i];
+		qrVec[i] = (static_cast<unsigned __int128>(1) << qTwok[i]) / qVec[i];//预计算的Barrett reduction中计算模数倒数需要用到的值
 		qkVec[i] = static_cast<uint64_t>(((static_cast<unsigned __int128>(invMod(((uint64_t)(1) << 62), qVec[i])) << 62) - 1) / qVec[i]);
 		qdVec[i] = qVec[i] << 1;
-		qRoots[i] = findMthRootOfUnity(M, qVec[i]);
+
+		//qRoots[i]为NTT中等价的2n次单位根g_(2n)。实际上n次单位根一共有n个，但是为了方便，如果不加说明，一般叙述的n次单位根，是指从1开始逆时针方向的第一个解w_n。
+		//本原单位根是指w_n^k，其中k和n互质。本原单位根的集合为n次单位根集合的子集，全体n次本原单位根共有phi(n)个。（补充：本原单位根和分圆多项式的关系为：https://www.cnblogs.com/pam-sh/p/15969529.html）
+		//补充：原根是指g。若一个数n有原根，那么原根个数为phi(phi(n))个。但是为了方便，如果不加说明，一般叙述的数n的原根，是指其中的最小值。
+		qRoots[i] = findMthRootOfUnity(M, qVec[i]);//qRoots[i]为NTT中qVec[i]的等价的M次单位根g_M=g_(2N)
+
 		qRootsInv[i] = invMod(qRoots[i], qVec[i]);
 		NInvModq[i] = invMod(N, qVec[i]);
 		mulMod(NScaleInvModq[i], NInvModq[i], (static_cast<uint64_t>(1) << 32), qVec[i]);
@@ -90,8 +98,8 @@ Context::Context(long logN, long logp, long L, long K, long h, double sigma) :
 		uint64_t powerInv = static_cast<uint64_t>(1);
 
 		for (long j = 0; j < N; ++j) {
-			uint64_t jprime = bitReverse(static_cast<uint32_t>(j)) >> (32 - logN);
-			qRootPows[i][jprime] = power;
+			uint64_t jprime = bitReverse(static_cast<uint32_t>(j)) >> (32 - logN);//将32位无符号整数的位进行bit反转后右移32 - logN位，得到只对最低logN位的bit反转。例如，当N=8，jprime的变化序列为：0,4,2,6,1,5,3,7
+			qRootPows[i][jprime] = power;//qRootPows[i][jprime]=qRoots[i]^j mod mod=g^j mod mod.所以，qRootPows[i][j]=qRoots[i]^jprime mod mod
 			unsigned __int128 tmp = (static_cast<unsigned __int128>(power) << 64);
 			qRootScalePowsOverq[i][jprime] = static_cast<uint64_t>(tmp / qVec[i]);
 			mulMod(qRootScalePows[i][jprime], qRootPows[i][jprime], (static_cast<uint64_t>(1) << 32), qVec[i]);
@@ -369,6 +377,7 @@ void Context::arrayBitReverse(uint64_t* vals, const long size) {
 	}
 }
 
+//没用到这个函数。都用fftSpecial()
 void Context::fft(complex<double>* vals, const long size) {
 	arrayBitReverse(vals, size);
 	for (long len = 2; len <= size; len <<= 1) {
@@ -412,8 +421,9 @@ void Context::fftInv(complex<double>* vals, const long size) {
 	}
 }
 
+//DIT FFT
 void Context::fftSpecial(complex<double>* vals, const long size) {
-	arrayBitReverse(vals, size);
+	arrayBitReverse(vals, size);//因为是DIT FFT，所以输入要为比特逆序
 	for (long len = 2; len <= size; len <<= 1) {
 		for (long i = 0; i < size; i += len) {
 			long lenh = len >> 1;
@@ -430,6 +440,7 @@ void Context::fftSpecial(complex<double>* vals, const long size) {
 	}
 }
 
+//DIF IFFT（频域抽取 no->bitreverse）
 void Context::fftSpecialInvLazy(complex<double>* vals, const long size) {
 	for (long len = size; len >= 1; len >>= 1) {
 		for (long i = 0; i < size; i += len) {
@@ -450,34 +461,43 @@ void Context::fftSpecialInvLazy(complex<double>* vals, const long size) {
 
 void Context::fftSpecialInv(complex<double>* vals, const long size) {
 	fftSpecialInvLazy(vals, size);
+	//这里做的是IFFT，最后需要把所有值除以n。IFFT公式见：https://zck15.github.io/2022/06/05/NTT.html
+	//https://zh.wikipedia.org/wiki/%E7%A6%BB%E6%95%A3%E5%82%85%E9%87%8C%E5%8F%B6%E5%8F%98%E6%8D%A2#DFT%E4%B8%8ECFT
 	for (long i = 0; i < size; ++i) {
 		vals[i] /= size;
 	}
 }
 
 void Context::encode(uint64_t* a, complex<double>* v, long slots, long l) {
-	complex<double>* uvals = new complex<double> [slots]();
+	//结果a的大小为：l*N (RNS模式)
+	complex<double>* uvals = new complex<double> [slots]();//uvals代替原数据v
 	copy(v, v + slots, uvals);
 
-	long gap = Nh / slots;
+	long gap = Nh / slots;//在数组a中，每两个原数据的实部（或虚部）的位置间隔。可知，原数据长度越长，在数组a中的排布间隔就越小。
 
-	fftSpecialInv(uvals, slots);
+	fftSpecialInv(uvals, slots);//对原数据进行slots点IFFT运算，从点值表示转换为系数表示
 
+	//将数据放大p倍
 	for (long j = 0; j < slots; ++j) {
 		uvals[j] *= p;
 	}
 
+	//使用二重循环构建NTT变换后的RNS形式的结果。
+	//与HEAAN库相似，见HEAAN库中函数：uint64_t* RingMultiplier::toNTT(ZZ* x, long np)
 	for (long i = 0; i < l; ++i) {
-		uint64_t* mi = a + i * N;
+		uint64_t* mi = a + i * N;//mi为结果的第i行。含义为原数据在第i个RNS基下的余数结果
 		for (long j = 0, jdx = Nh, idx = 0; j < slots; ++j, jdx += gap, idx += gap) {
+			//先拿到第j个原数据经过IFFT变换后的实部与虚部
 			long mir = uvals[j].real();
 			long mii = uvals[j].imag();
-			mi[idx] = mir >= 0 ? (uint64_t) mir : (uint64_t) (qVec[i] + mir);
-			mi[jdx] = mii >= 0 ? (uint64_t) mii : (uint64_t) (qVec[i] + mii);
+			//进行模运算（按照以下代码来看似乎不是真正的模运算？），算出第j个原数据在第i个RNS分量下的余数
+			mi[idx] = mir >= 0 ? (uint64_t) mir : (uint64_t) (qVec[i] + mir);//暂时理解为RNS基qVec[i]大于mir和mii，所以mir % qVec[i] 只会等于 mir自身 或 qVec[i] + mir
+			mi[jdx] = mii >= 0 ? (uint64_t) mii : (uint64_t) (qVec[i] + mii);//同上
 		}
-		qiNTTAndEqual(mi, i);
+		qiNTTAndEqual(mi, i);//第i行做NTT（相当于原来系数在CRT下的一个分量的余数结果做NTT）
 	}
 	delete[] uvals;
+	//encode结束后，返回的是NTT后的编码结果
 }
 
 void Context::encode(uint64_t* ax, double* vals, long slots, long l) {
@@ -538,6 +558,7 @@ void Context::decodeSingle(uint64_t* ax, double val, long l) {
 
 }
 
+//库中没有用到这个函数
 void Context::qiNTT(uint64_t* res, uint64_t* a, long index) {
 	copy(a, a + N, res);
 	qiNTTAndEqual(res, index);
@@ -548,6 +569,7 @@ void Context::piNTT(uint64_t* res, uint64_t* a, long index) {
 	piNTTAndEqual(res, index);
 }
 
+//库中没有用到这个函数
 void Context::NTT(uint64_t* res, uint64_t* a, long l, long k) {
 	for (long index = 0; index < l; ++index) {
 		uint64_t* ai = a + (index << logN);
@@ -562,35 +584,49 @@ void Context::NTT(uint64_t* res, uint64_t* a, long l, long k) {
 	}
 }
 
+//Cooley-Tukey Radix-2 DIT NTT.(NTT:CT,psi,no->bo) in-place算法，融合了psi（负包卷积）,并消除了bitreverse步骤。见论文：High-Performance Ideal Lattice-Based Cryptography on 8-Bit ATxmega Microcontrollers的algorithm 7
+//输出为bit逆序
+//DIT NTT对应的蝶形运算形式为:a+w*b,a-w*b。DIF NTT对应的蝶形运算形式为：a+b,(a-b)*w
+//见论文（这篇论文arxiv版本才有该算法的详细描述，和这个函数的实现一模一样，正式出版的反而没有）P3：https://arxiv.org/pdf/2103.16400
+//原算法论文：https://link.springer.com/chapter/10.1007/978-3-319-48965-0_8
+//使用了Montgomery modular multiplication and butterfly algorithms。见论文：Faster arithmetic for number-theoretic transforms
 void Context::qiNTTAndEqual(uint64_t* a, long index) {
 	long t = N;
 	long logt1 = logN + 1;
-	uint64_t q = qVec[index];
+	uint64_t q = qVec[index];//参数a就是rxi，为rx“矩阵”的第i行。q就是这一行代表的RNS的哪个基
 //	uint64_t qd = qdVec[index];
-	uint64_t qInv = qInvVec[index];
+	uint64_t qInv = qInvVec[index];//预计算的该行RNS基的逆元
+	//m是当前层需要用到的不同psi幂值的个数（该幂值已经是psi和w融合后的幂值）。同时m也是当前层蝴蝶结构的个数。m的变化序列：1,2,4,8,...
 	for (long m = 1; m < N; m <<= 1) {
-		t >>= 1;
-		logt1 -= 1;
+		t >>= 1;//t既是当前层每个小蝴蝶结构的两个输入之间的坐标的gap，又是当前层蝴蝶结构的个数。t的变化序列：N/2,N/4,...
+		logt1 -= 1;//t1指的是当前层每个小蝴蝶结构两个待处理的数的坐标gap的两倍。即t1=2*t，logt1=logt+1。t1变化序列：N,N/2,N/4,...
+		//遍历当前层m个每个蝴蝶结构
 		for (long i = 0; i < m; i++) {
-			long j1 = i << logt1;
-			long j2 = j1 + t - 1;
-			uint64_t W = qRootScalePows[index][m + i];
+			long j1 = i << logt1;//j1是当前层当前蝴蝶结构中，前半部分的起始坐标
+			long j2 = j1 + t - 1;//j2是当前层当前蝴蝶结构中，前半部分的最后一个坐标
+
+			uint64_t W = qRootScalePows[index][m + i];//当前层当前蝴蝶结构需要用到的psi幂次（注意：该幂次逆序存储，是为了消除bitreverse步骤）.这里将psi融合进NTT计算中（做负包卷积），详情见论文：https://link.springer.com/chapter/10.1007/978-3-319-22174-8_19
 //			uint64_t W = qRootScalePowsOverq[index][m + i];
 //			uint64_t w = qRootPows[index][m + i];
+			
+			//遍历当前层当前蝴蝶结构的t个(t=j2-t1+1)蝴蝶对，进行计算
 			for (long j = j1; j <= j2; j++) {
-
+				//DIT NTT的蝴蝶运算部分。每次处理a[j]和a[j+t]两个点。公式为：a[j]=(a[j]+a[j+t]*W) mod p，a[j+t]=(a[j]-a[j+t]*W) mod p
+				//使用了 Barrett Reduction。见：https://en.wikipedia.org/wiki/Barrett_reduction
+				//https://maskray.me/blog/2016-10-03-discrete-fourier-transform
 				uint64_t T = a[j + t];
-				unsigned __int128 U = static_cast<unsigned __int128>(T) * W;
-				uint64_t U0 = static_cast<uint64_t>(U);
-				uint64_t U1 = static_cast<uint64_t>(U >> 64);
-				uint64_t Q = U0 * qInv;
-				unsigned __int128 Hx = static_cast<unsigned __int128>(Q) * q;
-				uint64_t H = static_cast<uint64_t>(Hx >> 64);
+				unsigned __int128 U = static_cast<unsigned __int128>(T) * W;//U=T*W=a[j + t]*W(U为128位，防止溢出)。U是Harvey NTT butterfly中的W‘X1
+				uint64_t U0 = static_cast<uint64_t>(U);//从128位到64位的截断。U0为U的低64位
+				uint64_t U1 = static_cast<uint64_t>(U >> 64);//U缩小2^64倍.U1为U的高64位
+				uint64_t Q = U0 * qInv;//Q为低位乘以模逆元 W’
+				unsigned __int128 Hx = static_cast<unsigned __int128>(Q) * q;//Hx约等于Q*q=T*W=a[j + t]*W=U
+				uint64_t H = static_cast<uint64_t>(Hx >> 64);//Hx缩小2^64倍。H是Hx的高位部分
 				uint64_t V = U1 < H ? U1 + q - H : U1 - H;
 				a[j + t] = a[j] < V ? a[j] + q - V: a[j] - V;
 				a[j] += V;
 				if(a[j] > q) a[j] -= q;
 
+				//下面这些注释掉的代码应该是原作者根据Harvey NTT butterfly写的。原论文为：(arxiv) Intel HEXL：Accelerating Homomorphic Encryption with Intel AVX512-IFMA52 中的Aigorithm 4
 //				if(a[j] >= qd) a[j] -= qd;
 //				uint64_t T = a[j + t];
 //				unsigned __int128 U = static_cast<unsigned __int128>(T) * W;
@@ -603,6 +639,7 @@ void Context::qiNTTAndEqual(uint64_t* a, long index) {
 			}
 		}
 	}
+	//这里应该是将Harvey NTT butterfly的输出从Z_(4q)^N reduce 到 Z_(q)^N (详细说明也在(arxiv) Intel HEXL这篇论文中可以找到)
 //	for(long i = 0; i < N; i++) {
 //		if(a[i] >= qd) a[i] -= qd;
 //		if(a[i] >= q) a[i] -= q;
@@ -662,17 +699,20 @@ void Context::NTTAndEqual(uint64_t* a, long l, long k) {
 		qiNTTAndEqual(ai, index);
 	}
 
+	//由于k默认值为0,所以默认情况下不执行以下代码
 	for (long index = l; index < l + k; ++index) {
 		uint64_t* ai = a + (index << logN);
 		piNTTAndEqual(ai, index - l);
 	}
 }
 
+//库中没有用到这个函数
 void Context::qiINTT(uint64_t* res, uint64_t* a, long index) {
 	copy(a, a + N, res);
 	qiINTTAndEqual(res, index);
 }
 
+//算法详情见论文：https://link.springer.com/chapter/10.1007/978-3-319-22174-8_19
 void Context::qiINTTAndEqual(uint64_t* a, long index) {
 	uint64_t q = qVec[index];
 	uint64_t qd = qdVec[index];
@@ -1297,7 +1337,7 @@ void Context::back(uint64_t* res, uint64_t* a, long l) {
 				tt = tmp3[n + (k << logN)];
 				sum += static_cast<unsigned __int128>(tt) * pHatModq[k][i];
 			}
-			modBarrett(resi[n], sum, qVec[i], qrVec[i], qTwok[i]);
+			modBarrett(resi[n], sum, qVec[i], qrVec[i], qTwok[i]);//128位barrett reduction
 			subMod(resi[n], tmpi[n], resi[n], qVec[i]);
 			mulModBarrett(resi[n], resi[n], PInvModq[i], qVec[i], qrVec[i], qTwok[i]);
 		}

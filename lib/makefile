@@ -38,7 +38,7 @@ endif
 # Add inputs and outputs from these tool invocations to the build variables 
 
 # All Target
-all: libFRNSHEAAN.a
+all: clean libFRNSHEAAN.a
 
 # Tool invocations
 libFRNSHEAAN.a: $(OBJS) $(USER_OBJS)

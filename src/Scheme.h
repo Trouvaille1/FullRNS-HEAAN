@@ -87,6 +87,7 @@ public:
 
 	Ciphertext encrypt(double* vals, long slots, long l);
 
+	//库里面所有地方都将l初始化为L
 	Ciphertext encrypt(complex<double>* vals, long slots, long l);
 
 	Ciphertext encryptSingle(complex<double> val, long l);

@@ -27,11 +27,15 @@ void mulMod(uint64_t &r, uint64_t a, uint64_t b, uint64_t m) {
 	r = static_cast<uint64_t>(mul);
 }
 
+//在qiMulAndEqual()中这么调用：mulModBarrett(a[i], a[i], b[i], qVec[index], qrVec[index], qTwok[index]);
+//模qVec[index]的倒数1/qVec[index]=qrVec[index]/2^qTwok[index]=qrVec[index]>>qTwok[index]
 void mulModBarrett(uint64_t& r, uint64_t a, uint64_t b, uint64_t p, uint64_t pr, long twok) {
 	unsigned __int128 mul = static_cast<unsigned __int128>(a % p) * (b % p);
 	modBarrett(r, mul, p, pr, twok);
 }
 
+//计算r=a mod m （其中a为64位int）
+//实际上，r=a mod m=a- m*[a/m]=a-m*a*[mr/2^twok].所以可得模的倒数1/m=mr/2^towk
 void modBarrett(uint64_t &r, uint64_t a, uint64_t m, uint64_t mr, long twok) {
 	unsigned __int128 tmp = static_cast<unsigned __int128>(a) * mr;
 	tmp >>= twok;
@@ -48,6 +52,7 @@ void modBarrett(uint64_t &r, uint64_t a, uint64_t m, uint64_t mr, long twok) {
 
 }
 
+//计算r=a mod m （其中a为128位int）
 void modBarrett(uint64_t &r, unsigned __int128 a, uint64_t m, uint64_t mr, long twok) {
 	uint64_t atop, abot;
 	abot = static_cast<uint64_t>(a);
@@ -71,6 +76,7 @@ uint64_t invMod(uint64_t x, uint64_t m) {
 	}
 }
 
+//快速幂
 uint64_t powMod(uint64_t x, uint64_t y, uint64_t modulus) {
 	uint64_t res = 1;
 	while (y > 0) {
@@ -99,12 +105,13 @@ uint64_t pow(uint64_t x, uint64_t y) {
 	return res;
 }
 
+//将32位无符号整数的位进行反转
 uint32_t bitReverse(uint32_t x) {
-	x = (((x & 0xaaaaaaaa) >> 1) | ((x & 0x55555555) << 1));
-	x = (((x & 0xcccccccc) >> 2) | ((x & 0x33333333) << 2));
-	x = (((x & 0xf0f0f0f0) >> 4) | ((x & 0x0f0f0f0f) << 4));
-	x = (((x & 0xff00ff00) >> 8) | ((x & 0x00ff00ff) << 8));
-	return ((x >> 16) | (x << 16));
+	x = (((x & 0xaaaaaaaa) >> 1) | ((x & 0x55555555) << 1));// 第一步：将相邻的两位交换
+	x = (((x & 0xcccccccc) >> 2) | ((x & 0x33333333) << 2));// 第二步：将相邻的两对位（每对两位）交换
+	x = (((x & 0xf0f0f0f0) >> 4) | ((x & 0x0f0f0f0f) << 4));// 第三步：将相邻的四位交换
+	x = (((x & 0xff00ff00) >> 8) | ((x & 0x00ff00ff) << 8));// 第四步：将相邻的八位交换
+	return ((x >> 16) | (x << 16));// 第五步：将相邻的十六位交换
 }
 
 uint64_t gcd(uint64_t a, uint64_t b) {
@@ -137,31 +144,39 @@ void findPrimeFactors(set<uint64_t> &s, uint64_t number) {
 	}
 }
 
+//对质数模求原根g。方法见：https://gaisaiyuno.github.io/archives/3594e75f.html
+//补充：对合数求原根，将以下算法中的mod-1换为phi(mod)即可。
 uint64_t findPrimitiveRoot(uint64_t modulus) {
 	set<uint64_t> s;
 	uint64_t phi = modulus - 1;
-	findPrimeFactors(s, phi);
+	findPrimeFactors(s, phi);//首先对mod-1做质因数分解
+	//从2到mod-1枚举g
 	for (uint64_t r = 2; r <= phi; r++) {
 		bool flag = false;
+		//枚举质因数si，若对所有质因数si都有g^(mod-1/si)!=1，则g是mod的一个原根
 		for (auto it = s.begin(); it != s.end(); it++) {
 			if (powMod(r, phi / (*it), modulus) == 1) {
-				flag = true;
+				flag = true;//g不是mod的一个原根
 				break;
 			}
 		}
-		if (flag == false) {
+		if (flag == false) {//g是mod的一个原根
 			return r;
 		}
 	}
 	return -1;
 }
 
+//计算NTT中等价的M次单位根g_M
+//NTT介绍：https://oi-wiki.org/math/poly/ntt/
 uint64_t findMthRootOfUnity(uint64_t M, uint64_t mod) {
     uint64_t res;
-    res = findPrimitiveRoot(mod);
+	//找到mod的一个原根（原根是指mod的一个生成元，即res的幂可以生成模mod下的所有非零元素。）。
+	//原根的定义：https://oi-wiki.org/math/number-theory/primitive-root/
+    res = findPrimitiveRoot(mod);//求质数模mod的原根g，该原根满足g^(mod-1)=1 (mod mod)
     if((mod - 1) % M == 0) {
         uint64_t factor = (mod - 1) / M;
-        res = powMod(res, factor, mod);
+        res = powMod(res, factor, mod);//快速幂。求g_M=g^(mod-1/M)。这样一来就将g_M看做w_M的等价。在NTT中使用g_M代替w_M即可。
         return res;
     }
     else {

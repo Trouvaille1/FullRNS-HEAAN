@@ -54,7 +54,7 @@ void TestScheme::testEncodeBatch(long logN, long L, long logp, long logSlots) {
 	//-----------------------------------------
 	TimeUtils timeutils;
 	long k = L;
-	Context context(logN, logp, L, k);
+	Context context(logN, logp, L, k);//这里将K设置为L，即K==L
 	SecretKey secretKey(context);
 	Scheme scheme(secretKey, context);
 	//-----------------------------------------
@@ -81,7 +81,7 @@ void TestScheme::testBasic(long logN, long L, long logp, long logSlots) {
 	//-----------------------------------------
 	TimeUtils timeutils;
 	long K = L + 1;
-	Context context(logN, logp, L, K);
+	Context context(logN, logp, L, K);//这里将K设置为L+1，即K==L
 	SecretKey secretKey(context);
 	Scheme scheme(secretKey, context);
 

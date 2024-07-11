@@ -3,7 +3,7 @@
 ################################################################################
 
 # All Target
-all: FRNSHEAAN
+all: clean FRNSHEAAN
 
 # Tool invocations
 FRNSHEAAN:
