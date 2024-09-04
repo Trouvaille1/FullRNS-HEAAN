@@ -10,11 +10,11 @@
 
 int main() {
 
-	TestScheme::testEncodeSingle(14, 1, 55);
+	// TestScheme::testEncodeSingle(14, 1, 55);
 
 	// TestScheme::testEncodeBatch(15, 6, 55, 3);
 
-	// TestScheme::testBasic(15, 11, 55, 3);
+	TestScheme::testBasic(15, 11, 55, 3);//见原论文A Full RNS Variant of Approximate Homomorphic Encryption，第5.1节。选择Logq_0约等于61，剩余的q_1到q_L约等于2^55
 
 //	TestScheme::testConjugateBatch(15, 6, 55, 1);
 

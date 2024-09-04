@@ -98,6 +98,7 @@ void TestScheme::testBasic(long logN, long L, long logp, long logSlots) {
 	complex<double>* mvecMult = new complex<double>[slots];
 	complex<double>* mvecCMult = new complex<double>[slots];
 
+	//真值
 	for(long i = 0; i < slots; i++) {
 		mvecAdd[i] = mvec1[i] + mvec2[i];
 		mvecMult[i] = mvec1[i] * mvec2[i];

@@ -132,6 +132,7 @@ Context::Context(long logN, long logp, long L, long K, long h, double sigma) :
 	NScaleInvModp = new uint64_t[K]();
 
 	// Generate Special Primes //
+	//Special Primes指的是：RNS基D的前0~K个质数(即p0,...,p_(k-1),这些质数组成基B)
 	cnt = 0;
 	while(cnt < K) {
 		uint64_t prime1 = (1ULL << logp) + bnd * M + 1;

@@ -16,7 +16,7 @@
 #include "Common.h"
 #include "Numb.h"
 
-#define Q0_BIT_SIZE 61
+#define Q0_BIT_SIZE 61 //见原论文A Full RNS Variant of Approximate Homomorphic Encryption，第5.1节。选择Logq_0约等于61
 
 using namespace std;
 
